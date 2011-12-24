@@ -38,10 +38,17 @@ class Rank(object):
     Queens, Kings and Aces.
     """
 
-    # TODO (bjorn): What should "rank" be here? Internal int seems
-    # weird...
     def __init__(self, rank):
-        self.rank = rank
+        """Construct a Rank.
+
+        :param rank: 2,3,4,5,6,7,8,9,'t','j','q','k','a'.
+        :param rank: int or str.
+        """
+
+        if rank in ('t', 'T', 'j', 'J', 'q', 'Q', 'k', 'K', 'a', 'A'):
+            self.rank = self.__RANKS.index(rank.lower())
+        else:
+            self.rank = rank
 
     def __hash__(self):
         return hash(self.rank)
@@ -306,7 +313,7 @@ class Hand(object):
         straight = None
 
         # Special case when ace is low:
-        if ranks == [Rank(2), Rank(3), Rank(4), Rank(5), Rank(14)]:
+        if ranks == [Rank(2), Rank(3), Rank(4), Rank(5), Rank('A')]:
             straight = Rank(5)
 
         # All the other ("normal") straights:
