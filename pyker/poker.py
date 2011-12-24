@@ -50,6 +50,8 @@ class Rank(object):
         else:
             self.rank = rank
 
+        assert self.rank in xrange(2, 15)
+
     def __hash__(self):
         return hash(self.rank)
 
@@ -88,10 +90,11 @@ class Rank(object):
     def from_string(s):
         """Construct a new Rank from the string representation.
         """
-
-        r = Rank(None)
-        r.rank = Rank.__RANKS.index(s.lower())
-        return r
+        try:
+            rank = Rank.__RANKS.index(s.lower())
+            return Rank(rank)
+        except (ValueError, AssertionError):
+            raise ValueError('Invalid Rank %s' % (s,))
 
 class Card(object):
     """A playing card, which has a rank and a suit.
@@ -117,6 +120,8 @@ class Card(object):
         self.rank = rank
         self.suit = suit
 
+        assert self.suit in ('h', 's', 'c', 'd')
+
     def __str__(self):
         return '%s%s' % (self.rank, self.suit)
 
@@ -128,9 +133,15 @@ class Card(object):
         """Construct a new Card from the string representation.
         """
 
-        rank_str, suit = s[0], s[1]
+        try:
+            rank_str, suit = s[0], s[1]
+        except:
+            raise ValueError('Invalid Card %s' % (s,))
         rank = Rank.from_string(rank_str)
-        return Card(rank, suit)
+        try:
+            return Card(rank, suit)
+        except AssertionError:
+            raise ValueError('Invalid Card %s' % (s,))
 
 class HandClass(object):
     def score(self):
