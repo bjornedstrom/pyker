@@ -129,6 +129,32 @@ class HandClass(object):
     def score(self):
         """Calculate an integer score for this hand classification.
         """
+
+        # Scoring works by considering each HandClass as a tuple, most
+        # significant information first, and converting this tuple to
+        # a base-13 integer (because their are 13 unique ranks).
+        #
+        # For example, a three-of-a-kind an be uniquely identified by
+        # the 5-tuple:
+        #
+        # (three-of-a-kind, <card in threes>, <highest kicker>,
+        # <middle kicker>, <lowest kicker>)
+        #
+        # The most significant item in the tuple is the type of the
+        # hand class itself. This we get from HandClass.SCORE:
+        score = self.SCORE * 13**5
+
+        # HandClasses implement _score() which returns the remaining
+        # tuple of Ranks, ordered with most significant information
+        # first:
+        ranks = self._score()
+        for i in xrange(len(ranks)):
+            # Subtract 2 so we can use a base-13 number instead of
+            # base-15.
+            score += (ranks[i].rank - 2) * 13**i
+        return score
+
+    def _score(self):
         raise NotImplementedError('not implemented')
 
     def __cmp__(self, other):
@@ -138,105 +164,117 @@ class HandClass(object):
         return '<%s %r>' % (self.__class__.__name__, self.__dict__)
 
 class StraightFlush(HandClass):
+    SCORE = 8
+
     def __init__(self, highest):
         self.highest = highest
 
-    def score(self):
-        return 8 * 13**5 + (self.highest.rank - 2)
+    def _score(self):
+        return (self.highest,)
 
     def __str__(self):
         return 'Straight Flush, %s High' % (self.highest.pretty(),)
 
 class FourOfAKind(HandClass):
+    SCORE = 7
+
     def __init__(self, four, kicker):
         self.four = four
         self.kicker = kicker
 
-    def score(self):
-        return 7 * 13**5 + (self.four.rank - 2) * 13 + (self.kicker.rank - 2)
+    def _score(self):
+        return (self.four, self.kicker)
 
     def __str__(self):
         return 'Four of a Kind of %ss, kicker %s' % (self.four.pretty(), self.kicker.pretty())
 
 class FullHouse(HandClass):
+    SCORE = 6
+
     def __init__(self, three, two):
         self.three = three
         self.two = two
 
-    def score(self):
-        return 6 * 13**5 + (self.three.rank - 2) * 13 + (self.two.rank - 2)
+    def _score(self):
+        return (self.three, self.two)
 
     def __str__(self):
         return 'Full House, 3 %ss and 2 %ss' % (self.three.pretty(), self.two.pretty())
 
 class Flush(HandClass):
+    SCORE = 5
+
     def __init__(self, kickers):
         self.kickers = kickers
 
-    def score(self):
-        score = 0
-        for i in xrange(len(self.kickers)):
-            score += (self.kickers[i].rank - 2) * 13**i
-        return 5 * 13**5 + score
+    def _score(self):
+        return  self.kickers
 
     def __str__(self):
         return 'Flush with %s' % (', '.join(map(lambda s: s.pretty(), self.kickers)),)
 
 class Straight(HandClass):
+    SCORE = 4
+
     def __init__(self, highest):
         self.highest = highest
 
-    def score(self):
-        return 4 * 13**5 + (self.highest.rank - 2)
+    def _score(self):
+        return (self.highest,)
 
     def __str__(self):
         return 'Straight, %s High' % (self.highest.pretty(),)
 
 class ThreeOfAKind(HandClass):
+    SCORE = 3
+
     def __init__(self, three, kickers):
         self.three = three
         self.kickers = kickers
 
-    def score(self):
-        return 3 * 13**5 + (self.three.rank - 2) * 13**2 + (self.kickers[0].rank - 2) * 13**1 + (self.kickers[1].rank - 2)
+    def _score(self):
+        return (self.three,) + self.kickers
 
     def __str__(self):
         kickers = ', '.join(map(lambda s: s.pretty(), self.kickers))
         return 'Three of a Kind of %ss with %s' % (self.three.pretty(), kickers)
 
 class TwoPair(HandClass):
+    SCORE = 2
+
     def __init__(self, high_pair, low_pair, kicker):
         self.high_pair = high_pair
         self.low_pair = low_pair
         self.kicker = kicker
 
-    def score(self):
-        return 2 * 13**5 + (self.high_pair.rank - 2) * 13**2 + (self.low_pair.rank - 2) * 13**1 + (self.kicker.rank - 2)
+    def _score(self):
+        return (self.high_pair, self.low_pair, self.kicker)
 
     def __str__(self):
         return 'Two Pairs of %ss and %ss, kicker %s' % (self.high_pair.pretty(), self.low_pair.pretty(), self.kicker.pretty())
 
 class Pair(HandClass):
+    SCORE = 1
+
     def __init__(self, pair, kickers):
         self.pair = pair
         self.kickers = kickers
 
-    def score(self):
-        return 1 * 13**5 + (self.pair.rank - 2) * 13**3 + (self.kickers[0].rank - 2) * 13**1 + (self.kickers[1].rank - 2) * 13**1 + (self.kickers[2].rank - 2)
+    def _score(self):
+        return (self.pair,) + self.kickers
 
     def __str__(self):
         kickers = ', '.join(map(lambda s: s.pretty(), self.kickers))
         return 'Pair of %ss with %s' % (self.pair.pretty(), kickers)
 
 class Highest(HandClass):
+    SCORE = 0
+
     def __init__(self, kickers):
         self.kickers = kickers
 
-    def score(self):
-        score = 0
-        for i in xrange(len(self.kickers)):
-            score += (self.kickers[i].rank - 2) * 13**i
-        return score
+    def _score(self):
+        return self.kickers
 
     def __str__(self):
         return 'Highest Cards %s' % (', '.join(map(lambda s: s.pretty(), self.kickers)),)
@@ -354,6 +392,6 @@ if __name__ == '__main__':
         #print h, repr(Hand.from_string(h).classify())
         print h,
         try:
-            print Hand.from_string(h).classify()
+            print Hand.from_string(h).classify().score()
         except Exception, e:
             print 'failed', e
