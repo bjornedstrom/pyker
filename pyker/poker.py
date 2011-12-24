@@ -33,6 +33,13 @@
 # rewrite to be either more pythonic, or adapt OOP fully.
 
 class Rank(object):
+    """A Rank object for playing card ranks, representing Twos,
+    Threes, Fours, Fives, Sixs, Sevens, Eights, Nines, Tens, Jacks,
+    Queens, Kings and Aces.
+    """
+
+    # TODO (bjorn): What should "rank" be here? Internal int seems
+    # weird...
     def __init__(self, rank):
         self.rank = rank
 
@@ -46,6 +53,8 @@ class Rank(object):
         return self.__RANKS[self.rank]
 
     def pretty(self):
+        """Return a human-readable representation."""
+
         pretty_rank = {
             14: 'Ace',
             13: 'King',
@@ -70,21 +79,36 @@ class Rank(object):
 
     @staticmethod
     def from_string(s):
+        """Construct a new Rank from the string representation.
+        """
+
         r = Rank(None)
         r.rank = Rank.__RANKS.index(s.lower())
         return r
 
 class Card(object):
+    """A playing card, which has a rank and a suit.
+    """
+
     HEART = 'h'
     SPADES = 's'
     CLUBS = 'c'
     DIAMONDS = 'd'
 
     def __init__(self, rank, suit):
+        """Create a new playing card.
+
+        You probably want to use Card.from_string().
+
+        :param rank: rank of the card.
+        :type rank: Rank.
+        :param suit: the suit ("color") of the card, one of 'h', 's',
+            'c', 'd'.
+        :type suit: str.
+        """
+
         self.rank = rank
         self.suit = suit
-
-    __RANKS = 'xx23456789tjqka'
 
     def __str__(self):
         return '%s%s' % (self.rank, self.suit)
@@ -94,12 +118,17 @@ class Card(object):
 
     @staticmethod
     def from_string(s):
+        """Construct a new Card from the string representation.
+        """
+
         rank_str, suit = s[0], s[1]
         rank = Rank.from_string(rank_str)
         return Card(rank, suit)
 
 class HandClass(object):
     def score(self):
+        """Calculate an integer score for this hand classification.
+        """
         raise NotImplementedError('not implemented')
 
     def __cmp__(self, other):
@@ -213,11 +242,22 @@ class Highest(HandClass):
         return 'Highest Cards %s' % (', '.join(map(lambda s: s.pretty(), self.kickers)),)
 
 class Hand(object):
+    """A poker hand which is conceptually a set of cards.
+    """
+
     def __init__(self, cards):
+        """Create a new Hand.
+
+        :param cards: A list of Cards.
+        :type cards: [Card].
+        """
+
         self.cards = cards
 
     def classify(self):
-        """
+        """Attempt to classify this hand to a subclass of HandClass.
+
+        :returns: A HandClass instance.
         """
 
         assert len(self.cards) == 5
@@ -285,6 +325,9 @@ class Hand(object):
 
     @staticmethod
     def from_string(s):
+        """Construct a new Hand from the string representation.
+        """
+
         return Hand(map(Card.from_string, s.split()))
 
     def __repr__(self):
@@ -307,15 +350,10 @@ if __name__ == '__main__':
         'kc as 9d 3h 2d'
     ]
 
-    
     for h in hh:
         #print h, repr(Hand.from_string(h).classify())
         print h,
         try:
-            print Hand.from_string(h) #.classify()
+            print Hand.from_string(h).classify()
         except Exception, e:
             print 'failed', e
-
-
-
-
