@@ -231,6 +231,9 @@ class Game(object):
             if ps is not None and ps.chips > 0:
                 self.active.add(ps)
 
+        if len(self.active) < 2:
+            raise GameError('game over - too few funded players left')
+
         # There can be multiple pots, per table-stakes rules.
         self.pots = {} # name -> ps -> num chips
         self.pots_limited = {} # name -> limited?
@@ -378,11 +381,15 @@ class Game(object):
                     print 'fold'
                     self.active.remove(ps)
 
-            if ps.chips:
+            if ps.chips and len([pso for pso in self.active if pso.chips]) > 1:
                 # Yield execution to the main loop.
                 yield options, Action()
             else:
-                print '%s has no chips left' % (ps.player,)
+                if ps.chips == 0:
+                    print '%s has no chips left' % (ps.player,)
+                else:
+                    print '%s is the sole player with chips left - skipping' % (ps.player,)
+                    break
 
             acted.add(ps)
             self.pos = i + 1
