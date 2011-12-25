@@ -131,16 +131,91 @@ class Game(object):
             if p is not None:
                 return p
 
+    # TODO (bjorn): This code is too hairy and difficult to
+    # understand. It probably has lots of bugs. Improve!
     def post(self, ps, chips):
-        ps.chips -= chips
-        assert ps.chips >= 0
-        self.pots['main'] += chips
-        print '\tpots = %s'  % (self.pots,)
+        _chips = chips
 
+        if not self.pots:
+            # Create main pot
+            print 'creating pot 0'
+            self.pots[0] = {}
+            self.pots_limited[0] = False
+
+        # Find the pots this player has a stake in and has not fully
+        # contributed to:
+        new_pots = []
+        for pot_idx, stakes in self.pots.iteritems():
+            if ps.chips == 0 or chips == 0:
+                break
+
+            if ps not in stakes:
+                stakes[ps] = 0
+
+            # Determine how many chips to post in this pot, and
+            # whether it means player goes all-in.
+            all_in = False
+            post = chips
+            if self.pots_limited[pot_idx]:
+                post = min(post, max(stakes.values()) - stakes[ps])
+                assert post > 0
+            if post > ps.chips:
+                post = ps.chips
+                all_in = True
+
+            print (all_in, post)
+
+            # Move chipts from the player to the pot
+            ps.chips -= post
+            stakes[ps] += post
+            chips -= post
+
+            print '%s posts %s in pot %s - player has %s remaining. All In: %s' % (ps.player, post, pot_idx, ps.chips, all_in)
+
+            # Mark this as a limited pot: further bets may create a
+            # side pot.
+            if all_in:
+                self.pots_limited[pot_idx] = True
+
+                # Maybe move chips to a side pot
+                new_side_pot = {}
+                for other_ps, value in stakes.iteritems():
+                    if value > stakes[ps]:
+                        new_side_pot[other_ps] = value - stakes[ps]
+                        stakes[other_ps] = stakes[ps]
+                if new_side_pot:
+                    new_pots.append(new_side_pot)
+
+        for new_pot in new_pots:
+            i = max(self.pots.keys()) + 1
+            self.pots[i] = new_pot
+            self.pots_limited[i] = False
+
+        # Player has remaining chips. Create new pot
+        if ps.chips and chips:
+            i = max(self.pots.keys()) + 1
+            self.pots[i] = {}
+            self.pots_limited[i] = False
+
+            print 'creating pot %s' % i
+
+            self.pots[i][ps] = chips
+            ps.chips -= chips
+            print '%s posts %s in pot %s - player has %s remaining' % (ps.player, chips, i, ps.chips)
+            chips = 0
+
+        # Update bets. This doesn't care about side pots etc, it's
+        # just what the player attempted to match this betting round.
         try:
-            self.bets[ps] += chips
+            self.bets[ps] += _chips
         except:
-            self.bets[ps] = chips
+            self.bets[ps] = _chips
+
+        print 'pots:'
+        for name, pot in self.pots.iteritems():
+            print 'pot %d (limited: %s)' % (name, self.pots_limited[name])
+            for k, v in pot.iteritems():
+                print "\t", k.player, "\t", v
 
         print 'bets:', ' '.join(('%s=%s' % (k.player, v) for (k, v) in self.bets.iteritems()))
 
@@ -148,13 +223,6 @@ class Game(object):
     # self.deck, self.flop, self.turn, self.river,
     # self.dealer
     def _state_init(self):
-        # There can be multiple pots, per table-stakes rules.
-        self.pots = {}
-        self.pots['main'] = 0
-
-        # There are currently no bets.
-        self.bets = {}
-
         # Active players are players remaining at table with remaining
         # chips.
         self.active = set()
@@ -162,6 +230,12 @@ class Game(object):
             ps = self.table.get(pos)
             if ps is not None and ps.chips > 0:
                 self.active.add(ps)
+
+        # There can be multiple pots, per table-stakes rules.
+        self.pots = {} # name -> ps -> num chips
+        self.pots_limited = {} # name -> limited?
+
+        self.bets = {} # ps -> attempted bet
 
         # The deck
         deck = []
@@ -291,12 +365,12 @@ class Game(object):
                     # XXX: All in etc
                     self.post(ps, max(self.bets.values()) - self.bets.get(ps, 0))
                 def action_raise(iself, chips):
-                    if 'raise' not in options:
+                    if 'raise' not in options or chips > ps.chips:
                         raise GameError('invalid raise')
                     print 'raise', chips
                     self.post(ps, chips)
                 def action_bet(iself, chips):
-                    if 'bet' not in options:
+                    if 'bet' not in options or chips > ps.chips:
                         raise GameError('invalid bet')
                     print 'bet', chips
                     self.post(ps, chips)
@@ -304,8 +378,11 @@ class Game(object):
                     print 'fold'
                     self.active.remove(ps)
 
-            # Yield execution to the main loop.
-            yield options, Action()
+            if ps.chips:
+                # Yield execution to the main loop.
+                yield options, Action()
+            else:
+                print '%s has no chips left' % (ps.player,)
 
             acted.add(ps)
             self.pos = i + 1
@@ -318,16 +395,22 @@ class Game(object):
         if not self.active:
             return
 
+        print 'community cards are %s' % ' '.join(map(str, self.flop + [self.turn, self.river]))
+
         relative = []
         for ps in self.active:
             best = Hand.best_from_seven(*(ps.hole + self.flop + [self.turn, self.river]))
-            print '%s has %s' % (ps.player, best.classify())
+            print '%s has %s, best hand is %s' % (ps.player, ' '.join(map(str, ps.hole)), best.classify())
             relative.append((best, ps))
         relative.sort(reverse=True)
 
-        print 'winners', relative
-
-        #winners = set([ps for (ps, hand) in relative if hand == relative[0][1]])
+        for pot_idx, stakes in self.pots.iteritems():
+            ordering = [(best, ps) for (best, ps) in relative if ps in stakes]
+            winners = [w for w in ordering if w[0] == ordering[0][0]]
+            won = sum(stakes.values()) / len(winners)
+            for _, ps in winners:
+                print '%s won %s from pot %s' % (ps.player, won, pot_idx)
+                ps.chips += won
 
     def loop(self):
         while True:
@@ -385,6 +468,34 @@ class Game(object):
         yield ret
 
 
+
+def test_pots():
+    p1 = Player('player 1', 5000)
+    p2 = Player('player 2', 3000)
+    p3 = Player('player 3', 8000)
+    p4 = Player('player 4', 7000)
+
+    t = Table(5)
+    rules = GameRules()
+    g = Game(t, rules)
+    g.set_blinds(20, 10)
+
+    p1s = PlayerState(p1, 100)
+    p2s = PlayerState(p2, 200)
+    p3s = PlayerState(p3, 233)
+    p4s = PlayerState(p4, 250)
+
+    t.join(0, p1s)
+    t.join(2, p2s)
+    t.join(3, p3s)
+    t.join(4, p4s)
+
+    g._state_init()
+    g.post(p1s, 150)
+    g.post(p2s, 150)
+    g.post(p3s, 150)
+    g.post(p4s, 150)
+
 def test_game():
     # set up a bunch of players. These exists independent of games.
     p1 = Player('player 1', 5000)
@@ -400,9 +511,9 @@ def test_game():
 
     # set up player states for this game
     p1s = PlayerState(p1, 1000)
-    p2s = PlayerState(p2, 1000)
-    p3s = PlayerState(p3, 1000)
-    p4s = PlayerState(p4, 1000)
+    p2s = PlayerState(p2, 500)
+    p3s = PlayerState(p3, 600)
+    p4s = PlayerState(p4, 700)
 
     t.join(0, p1s)
     t.join(2, p2s)
