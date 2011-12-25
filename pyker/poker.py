@@ -310,6 +310,9 @@ class Hand(object):
 
         self.cards = cards
 
+    def __cmp__(self, other):
+        return cmp(self.classify(), other.classify())
+
     def classify(self):
         """Attempt to classify this hand to a subclass of HandClass.
 
@@ -380,6 +383,24 @@ class Hand(object):
         return Highest((ranks[4], ranks[3], ranks[2], ranks[1], ranks[0]))
 
     @staticmethod
+    def best_from_seven(*cards):
+        """Given 7 cards, construct the best 5 card hand.
+
+        :param *cards: list of cards
+        :type *cards: [Card]
+        :returns: Hand
+        """
+        # Instead of thinking of this as "7 choose 5", we think of "7
+        # remove 2" which is easier to implement.
+
+        best = None
+        for r1 in range(7):
+            for r2 in range(r1 + 1, 7):
+                hand = Hand([cards[i] for i in range(7) if i not in (r1, r2)])
+                best = hand if best is None else max(best, hand)
+        return best
+
+    @staticmethod
     def from_string(s):
         """Construct a new Hand from the string representation.
         """
@@ -388,6 +409,13 @@ class Hand(object):
 
     def __repr__(self):
         return '<Hand %s>' % (' '.join(map(str, self.cards)))
+
+
+def string_to_cards(s):
+    """Given a string, return a list of Cards.
+    """
+
+    return map(Card.from_string, s.split())
 
 
 if __name__ == '__main__':
@@ -413,3 +441,5 @@ if __name__ == '__main__':
             print Hand.from_string(h).classify().score()
         except Exception, e:
             print 'failed', e
+
+    print Hand.best_from_seven(*string_to_cards('kc as 9d 3h 2d ac ks')).classify()
