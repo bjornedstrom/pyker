@@ -103,6 +103,10 @@ class GameRules(object):
         self.table_stakes = True
 
 
+class GameError(Exception):
+    pass
+
+
 class Game(object):
     def __init__(self, table, rules):
         self.table = table
@@ -262,41 +266,48 @@ class Game(object):
 
             print '%s to act' % (ps.player,)
 
+            # Construct a setof valid options for the player.
+            options = set(['fold'])
+            if not self.bets or sum(self.bets.values()) == 0:
+                options.add('bet') # open
+                options.add('check')
+            else:
+                # TODO (bjorn): BB can check here (which is the same
+                # as call).
+                options.add('call')
+                options.add('raise')
+
+            # A context to execute the options.
             class Action(object):
                 def action_check(iself):
+                    if 'check' not in options:
+                        raise GameError('invalid check')
                     print 'check'
                     self.post(ps, 0)
                 def action_call(iself):
+                    if 'call' not in options:
+                        raise GameError('invalid call')
                     print 'call'
                     # XXX: All in etc
                     self.post(ps, max(self.bets.values()) - self.bets.get(ps, 0))
                 def action_raise(iself, chips):
+                    if 'raise' not in options:
+                        raise GameError('invalid raise')
                     print 'raise', chips
                     self.post(ps, chips)
                 def action_bet(iself, chips):
+                    if 'bet' not in options:
+                        raise GameError('invalid bet')
                     print 'bet', chips
                     self.post(ps, chips)
                 def action_fold(iself):
                     print 'fold'
                     self.active.remove(ps)
 
-            action = Action()
-            act = raw_input('check/call/raise/fold?> ')
-            if act == 'check':
-                action.action_check()
-            elif act == 'call':
-                action.action_call()
-            elif 'raise' in act or 'bet' in act:
-                fst, snd = act.split()
-                if fst == 'raise':
-                    action.action_raise(int(snd))
-                else:
-                    action.action_bet(int(snd))
-            elif act == 'fold':
-                action.action_fold()
+            # Yield execution to the main loop.
+            yield options, Action()
 
             acted.add(ps)
-
             self.pos = i + 1
 
         self.bets = {}
@@ -318,7 +329,12 @@ class Game(object):
 
         #winners = set([ps for (ps, hand) in relative if hand == relative[0][1]])
 
+    def loop(self):
+        while True:
+            yield self.game()
+
     def game(self):
+        ret = None
         # Transitions for the game state machine.
         if self.state == 'init':
             print 'INIT'
@@ -335,7 +351,7 @@ class Game(object):
             self.sub_state = 'preflop'
         elif self.state == 'betting':
             print 'BETTING', self.sub_state
-            self._state_betting()
+            ret = self._state_betting()
             if self.sub_state == 'preflop':
                 self.state = 'deal-flop'
             elif self.sub_state == 'flop':
@@ -366,6 +382,8 @@ class Game(object):
         else:
             raise AssertionError('invalid state %s' % (self.state,))
 
+        yield ret
+
 
 def test_game():
     # set up a bunch of players. These exists independent of games.
@@ -391,8 +409,45 @@ def test_game():
     t.join(3, p3s)
     t.join(4, p4s)
 
-    for i in range(15):
-        g.game()
+
+    for gen in g.loop():
+        action_gen = gen.next()
+        if action_gen is None:
+            continue
+
+        for options, action in action_gen:
+
+            while True:
+                act = raw_input('%s?> ' % '/'.join(options))
+
+                try:
+                    if act == 'check':
+                        action.action_check()
+                        break
+                    elif act == 'call':
+                        action.action_call()
+                        break
+                    elif 'raise' in act or 'bet' in act:
+                        try:
+                            fst, snd = act.split()
+                            name = fst
+                            chips = int(snd)
+                        except Exception, e:
+                            print 'invalid input: %s' % (act,)
+                            continue
+
+                        if name == 'raise':
+                            action.action_raise(chips)
+                        else:
+                            action.action_bet(chips)
+                        break
+                    elif act == 'fold':
+                        action.action_fold()
+                        break
+                    else:
+                        print 'invalid input: %s' % (act,)
+                except GameError, e:
+                    print e
 
 
 if __name__ == '__main__':
