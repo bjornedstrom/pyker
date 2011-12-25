@@ -107,15 +107,14 @@ class Game(object):
     def __init__(self, table, rules):
         self.table = table
         self.rules = rules
-        self.dealer = 0
-        self.bb = 0
-        self.sb = 0
-        self.pots = {} # multiple per table stakes
-        self.pos = 0
 
+        # The dealer button is a piece of state that changes between
+        # successive games. Most other state is state for the actual
+        # game. This state is set up in the state machine code.
+        self.dealer = -1
+
+        # Seed for the state machine.
         self.state = 'init'
-        self.deck = None
-        self.active = set()
 
     def set_blinds(self, big, small):
         self.bb = big
@@ -141,127 +140,202 @@ class Game(object):
 
         print 'bets:', ' '.join(('%s=%s' % (k.player, v) for (k, v) in self.bets.iteritems()))
 
-    def game(self): # state
+    # modifies: self.pots, self.bets, self.active,
+    # self.deck, self.flop, self.turn, self.river,
+    # self.dealer
+    def _state_init(self):
+        # There can be multiple pots, per table-stakes rules.
+        self.pots = {}
+        self.pots['main'] = 0
 
-        # state machine:
-        if self.state == 'init':
-            print 'INIT'
-            self.pots = {}
-            self.pots['main'] = 0
-            self.bets = {}
+        # There are currently no bets.
+        self.bets = {}
 
-            self.state = 'deal-hole'
-
-        elif self.state == 'deal-hole':
-            print 'DEALING CARDS'
-
-            self.active = set()
-
-            deck = []
-            for suit in 'hscd':
-                for rank in map(Rank, range(2, 15)):
-                    deck.append(Card(rank, suit))
-            random.shuffle(deck)
-            self.deck = deck
-
-            dealer = self.table.find(self.dealer)
-            print '%s is dealer' % (self.table.get(dealer).player)
-
-            for pos in range(dealer + 1,
-                             dealer + 1 + self.table.num_seats):
-                ps = self.table.get(pos)
-                if ps is None:
-                    continue
-                ps.hole, self.deck = self.deck[0:2], self.deck[2:]
-
-                print 'dealt hole cards to %s' % (ps.player)
-
+        # Active players are players remaining at table with remaining
+        # chips.
+        self.active = set()
+        for pos in range(self.table.num_seats):
+            ps = self.table.get(pos)
+            if ps is not None and ps.chips > 0:
                 self.active.add(ps)
 
+        # The deck
+        deck = []
+        for suit in 'hscd':
+            for rank in map(Rank, range(2, 15)):
+                deck.append(Card(rank, suit))
+        random.shuffle(deck)
+        self.deck = deck
+
+        # The community cards.
+        self.flop = []
+        self.turn = None
+        self.river = None
+
+        # We could advance the dealer when the game has ended, but
+        # since that can happen at multiple places it's more
+        # convienient to do it once, here. If we want a particular
+        # seat as dealer, we must remember to subtract one when we set
+        # it.
+        self.dealer += 1
+
+    # modifies: self.deck
+    def _state_deal_hole_cards(self):
+        dealer = self.table.find(self.dealer)
+        print '%s is dealer' % (self.table.get(dealer).player)
+
+        for pos in range(dealer + 1,
+                         dealer + 1 + self.table.num_seats):
+            ps = self.table.get(pos)
+            if ps is None:
+                continue
+            ps.hole, self.deck = self.deck[0:2], self.deck[2:]
+
+            print 'dealt hole cards to %s' % (ps.player)
+
+    # modifies: self.deck, self.flop
+    def _state_deal_flop(self):
+        burn, flop, self.deck = self.deck[0], \
+            self.deck[1:4], self.deck[4:]
+
+        self.flop = flop
+        print 'flop is %s' % (' '.join(map(str, flop)))
+
+    # modifies: self.deck, self.turn
+    def _state_deal_turn(self):
+        burn, turn, self.deck = self.deck[0], \
+            self.deck[1], self.deck[2:]
+
+        self.turn = turn
+        print 'turn is %s' % (turn,)
+
+    # modifies: self.deck, self.river
+    def _state_deal_river(self):
+        burn, river, self.deck = self.deck[0], \
+            self.deck[1], self.deck[2:]
+
+        self.river = river
+        print 'river is %s' % (river,)
+
+    # modifies: self.pos
+    # calls: self.post
+    def _state_post_blinds(self):
+        pos = self.table.find(self.dealer)
+        print '%s is dealer' % (self.table.get(pos).player)
+
+        # If there are only two players, the dealer will post the
+        # small blinds. Otherwise, it's the next player.
+        if self.table.players() > 2:
+            pos += 1
+
+        player_sb_idx = self.table.find(pos)
+        player_sb = self.table.get(player_sb_idx)
+
+        print '%s posting small blind' % (player_sb.player,)
+        self.post(player_sb, self.sb)
+
+        player_bb_idx = self.table.find(player_sb_idx + 1)
+        player_bb = self.table.get(player_bb_idx)
+
+        print '%s posting big blind' % (player_bb.player,)
+        self.post(player_bb, self.bb)
+
+        self.pos = player_bb_idx + 1
+
+    # modifies: self.pos, self.bets
+    # calls: self.post
+    def _state_betting(self):
+        acted = set()
+
+        while self.active:
+            # betting round continues until everyone has acted and
+            # bet the same amount (or all-in)
+
+            if len(acted) == len(self.active):
+                val = self.bets.values()
+                # XXX: All in
+                if all((v == val[0] for v in val)):
+                    break
+
+            i = self.table.find(self.pos)
+            ps = self.table.get(i)
+
+            print '%s to act' % (ps.player,)
+
+            class Action(object):
+                def action_check(iself):
+                    print 'check'
+                    self.post(ps, 0)
+                def action_call(iself):
+                    print 'call'
+                    # XXX: All in etc
+                    self.post(ps, max(self.bets.values()) - self.bets.get(ps, 0))
+                def action_raise(iself, chips):
+                    print 'raise', chips
+                    self.post(ps, chips)
+                def action_bet(iself, chips):
+                    print 'bet', chips
+                    self.post(ps, chips)
+                def action_fold(iself):
+                    print 'fold'
+                    self.active.remove(ps)
+
+            action = Action()
+            act = raw_input('check/call/raise/fold?> ')
+            if act == 'check':
+                action.action_check()
+            elif act == 'call':
+                action.action_call()
+            elif 'raise' in act or 'bet' in act:
+                fst, snd = act.split()
+                if fst == 'raise':
+                    action.action_raise(int(snd))
+                else:
+                    action.action_bet(int(snd))
+            elif act == 'fold':
+                action.action_fold()
+
+            acted.add(ps)
+
+            self.pos = i + 1
+
+        self.bets = {}
+        self.pos = self.dealer + 1
+
+    # modifies:
+    def _state_showdown(self):
+        if not self.active:
+            return
+
+        relative = []
+        for ps in self.active:
+            best = Hand.best_from_seven(*(ps.hole + self.flop + [self.turn, self.river]))
+            print '%s has %s' % (ps.player, best.classify())
+            relative.append((best, ps))
+        relative.sort(reverse=True)
+
+        print 'winners', relative
+
+        #winners = set([ps for (ps, hand) in relative if hand == relative[0][1]])
+
+    def game(self):
+        # Transitions for the game state machine.
+        if self.state == 'init':
+            print 'INIT'
+            self._state_init()
+            self.state = 'deal-hole'
+        elif self.state == 'deal-hole':
+            print 'DEALING CARDS'
+            self._state_deal_hole_cards()
             self.state = 'blinds'
         elif self.state == 'blinds':
             print 'POSTING BLINDS'
-
-            pos = self.table.find(self.dealer)
-            print '%s is dealer' % (self.table.get(pos).player)
-
-            # If there are only two players, the dealer will post the
-            # small blinds. Otherwise, it's the next player.
-            if self.table.players() > 2:
-                pos += 1
-
-            sbi = self.table.find(pos)
-            sb = self.table.get(sbi)
-
-            print '%s posting small blind' % (sb.player,)
-            self.post(sb, self.sb)
-
-            bbi = self.table.find(sbi + 1)
-            bb = self.table.get(bbi)
-
-            print '%s posting big blind' % (bb.player,)
-            self.post(bb, self.bb)
-
-            self.pos = bbi + 1
+            self._state_post_blinds()
             self.state = 'betting'
             self.sub_state = 'preflop'
         elif self.state == 'betting':
             print 'BETTING', self.sub_state
-
-            acted = set()
-
-            while self.active:
-                # betting round continues until everyone has acted and
-                # bet the same amount (or all-in)
-
-                if len(acted) == len(self.active):
-                    val = self.bets.values()
-                    # XXX: All in
-                    if all((v == val[0] for v in val)):
-                        break
-
-                i = self.table.find(self.pos)
-                ps = self.table.get(i)
-
-                print '%s to act' % (ps.player,)
-
-                class Action(object):
-                    def action_check(iself):
-                        print 'check'
-                        self.post(ps, 0)
-                    def action_call(iself):
-                        print 'call'
-                        # XXX: All in etc
-                        self.post(ps, max(self.bets.values()) - self.bets.get(ps, 0))
-                    def action_raise(iself, chips):
-                        print 'raise', chips
-                        self.post(ps, chips)
-                    def action_bet(iself, chips):
-                        print 'bet', chips
-                        self.post(ps, chips)
-                    def action_fold(iself):
-                        print 'fold'
-                        self.active.remove(ps)
-
-                action = Action()
-                act = raw_input('check/call/raise/fold?> ')
-                if act == 'check':
-                    action.action_check()
-                elif act == 'call':
-                    action.action_call()
-                elif 'raise' in act or 'bet' in act:
-                    fst, snd = act.split()
-                    if fst == 'raise':
-                        action.action_raise(int(snd))
-                    else:
-                        action.action_bet(int(snd))
-                elif act == 'fold':
-                    action.action_fold()
-
-                acted.add(ps)
-
-                self.pos = i + 1
-
+            self._state_betting()
             if self.sub_state == 'preflop':
                 self.state = 'deal-flop'
             elif self.sub_state == 'flop':
@@ -270,62 +344,27 @@ class Game(object):
                 self.state = 'deal-river'
             elif self.sub_state == 'river':
                 self.state = 'showdown'
-            self.bets = {}
-            self.pos = self.dealer + 1
-
         elif self.state == 'deal-flop':
             print 'DEALING FLOP'
-
-            burn, flop, self.deck = self.deck[0], \
-                self.deck[1:4], self.deck[4:]
-
-            self.flop = flop
-            print 'flop is %s' % (' '.join(map(str, flop)))
-
+            self._state_deal_flop()
             self.state = 'betting'
             self.sub_state = 'flop'
-
         elif self.state == 'deal-turn':
             print 'DEALING TURN'
-
-            burn, turn, self.deck = self.deck[0], \
-                self.deck[1], self.deck[2:]
-
-            self.turn = turn
-            print 'turn is %s' % (turn,)
-
+            self._state_deal_turn()
             self.state = 'betting'
             self.sub_state = 'turn'
-
         elif self.state == 'deal-river':
             print 'DEALING RIVER'
-
-            burn, river, self.deck = self.deck[0], \
-                self.deck[1], self.deck[2:]
-
-            self.river = river
-            print 'river is %s' % (river,)
-
+            self._state_deal_river()
             self.state = 'betting'
             self.sub_state = 'river'
-
         elif self.state == 'showdown':
             print 'SHOWDOWN'
-
-            if self.active:
-                relative = []
-                for ps in self.active:
-                    best = Hand.best_from_seven(*(ps.hole + self.flop + [self.turn, self.river]))
-                    print '%s has %s' % (ps.player, best.classify())
-                    relative.append((best, ps))
-                relative.sort(reverse=True)
-
-                print 'winners', relative
-
-                #winners = set([ps for (ps, hand) in relative if hand == relative[0][1]])
-
-            self.dealer += 1
-            self.state = None
+            self._state_showdown()
+            self.state = 'init'
+        else:
+            raise AssertionError('invalid state %s' % (self.state,))
 
 
 def test_game():
@@ -349,8 +388,8 @@ def test_game():
 
     t.join(0, p1s)
     t.join(2, p2s)
-    #t.join(3, p3s)
-    #t.join(4, p4s)
+    t.join(3, p3s)
+    t.join(4, p4s)
 
     for i in range(15):
         g.game()
