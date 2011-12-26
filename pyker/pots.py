@@ -133,6 +133,9 @@ class Pots(object):
     def list(self):
         """Yields information about pots and which players have stakes
         in them.
+
+        :returns: Yields tuples ([ps], total) where [ps] is a list of
+          players and total is the total amount in the pot.
         """
 
         for name, pot in self.pots.iteritems():
