@@ -30,6 +30,11 @@
 """ module for handling multiple pots.
 """
 
+import logging
+
+log = logging.getLogger(__name__)
+
+
 class Pots(object):
     """Keeps track of the different pots, who has stakes in each etc.
     """
@@ -60,7 +65,7 @@ class Pots(object):
 
         if not self.pots:
             # Create main pot
-            print 'creating pot 0'
+            log.debug('creating pot 0')
             self.pots[0] = {}
             self.pots_limited[0] = False
 
@@ -89,7 +94,7 @@ class Pots(object):
             stakes[ps] += post
             chips -= post
 
-            print '%s posts %s in pot %s - player has %s remaining. All In: %s' % (ps, post, pot_idx, ps.chips, all_in)
+            log.debug('%s posts %s in pot %s - player has %s remaining. All In: %s' % (ps, post, pot_idx, ps.chips, all_in))
 
             # Mark this as a limited pot: further bets may create a
             # side pot.
@@ -116,19 +121,18 @@ class Pots(object):
             self.pots[i] = {}
             self.pots_limited[i] = False
 
-            print 'creating pot %s' % i
+            log.debug('creating pot %s', i)
 
             self.pots[i][ps] = chips
             ps.chips -= chips
-            print '%s posts %s in pot %s - player has %s remaining' % (ps, chips, i, ps.chips)
+            log.debug('%s posts %s in pot %s - player has %s remaining' % (ps, chips, i, ps.chips))
             chips = 0
 
-
-        print 'pots:'
+        log.debug('pots:')
         for name, pot in self.pots.iteritems():
-            print 'pot %d (limited: %s)' % (name, self.pots_limited[name])
+            log.debug('pot %d (limited: %s)' % (name, self.pots_limited[name]))
             for k, v in pot.iteritems():
-                print "\t", k, "\t", v
+                log.debug('\t%s\t%s', k, v)
 
     def list(self):
         """Yields information about pots and which players have stakes

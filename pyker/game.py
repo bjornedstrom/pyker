@@ -28,9 +28,15 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 
+import logging
 import random
+import sys
+
 from pyker.poker import *
 from pyker.pots import Pots
+
+
+log = logging.getLogger(__name__)
 
 
 class Player(object):
@@ -495,4 +501,6 @@ def test_game():
 
 
 if __name__ == '__main__':
+    logging.basicConfig(format='%(message)s', stream=sys.stderr)
+    logging.getLogger().setLevel(logging.DEBUG)
     test_game()
