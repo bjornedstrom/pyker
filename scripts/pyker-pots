@@ -74,7 +74,7 @@ Pots and Limits:
 
 def main():
     logging.basicConfig(format='%(message)s', stream=sys.stderr)
-    logging.getLogger().setLevel(logging.DEBUG)
+    #logging.getLogger().setLevel(logging.DEBUG)
 
     parser = OptionParserVerbatimEpilog(usage=usage(), epilog=epilog())
 
@@ -96,7 +96,6 @@ def main():
 
     players = {}
 
-    print 'initial setup:'
     if options.players:
         for s_player in options.players:
             try:
@@ -120,7 +119,6 @@ def main():
             players[name] = Player(name, 0)
 
             print 'created player %s with 0 chips (use -p option to override)' % (name,)
-    print
 
     for pot_idx, initial in enumerate(options.initial or []):
         limited = False
@@ -150,8 +148,7 @@ def main():
 
         print 'set up pot %s with %s chips%s, player(s) %s have stakes' % (pot_idx, total, ' (limited)' if limited else '', initial)
 
-    if options.initial:
-        print
+    print
 
     for s_bet in args:
         print 'placing bet %s:' % s_bet
@@ -160,6 +157,15 @@ def main():
             parser.error('player %s does not exist' % (name,))
         chips = int(chips)
         p.post(players[name], chips)
+
+        # Output pots in a table.
+        print
+        print 'POT\tlimit\ttotal\tstakes'
+        for pot_idx, stakes in p.pots.iteritems():
+            print 'pot %s\t%s\t%s\t%s' % (pot_idx,
+                                      'L' if p.pots_limited[pot_idx] else '',
+                                      sum(stakes.values()),
+                                      ', '.join(('%s=%s' % (p, n) for p, n in stakes.iteritems())))
         print
 
     sys.exit(0)
