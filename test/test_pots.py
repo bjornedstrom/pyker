@@ -96,5 +96,20 @@ class PotsTest(unittest.TestCase):
         self.assertEquals(200, self.p.pots[1][self.p4])
         self.assertEquals(200, self.p.pots[2][self.p4])
 
+    def test_pots_limited_bug(self):
+        p1 = PS('p1', 100)
+        p2 = PS('p2', 400)
+        p = pots.Pots()
+
+        p.post(p1, 100)
+        p.post(p2, 100)
+
+        # This used to raise assertion
+        p.post(p2, 200)
+
+        self.assertEquals(100, p.pots[0][p1])
+        self.assertEquals(100, p.pots[0][p2])
+        self.assertEquals(200, p.pots[1][p2])
+
 if __name__ == '__main__':
     unittest.main()
