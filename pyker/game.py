@@ -30,6 +30,7 @@
 
 import random
 from pyker.poker import *
+from pyker.pots import Pots
 
 
 class Player(object):
@@ -136,73 +137,7 @@ class Game(object):
     def post(self, ps, chips):
         _chips = chips
 
-        if not self.pots:
-            # Create main pot
-            print 'creating pot 0'
-            self.pots[0] = {}
-            self.pots_limited[0] = False
-
-        # Find the pots this player has a stake in and has not fully
-        # contributed to:
-        new_pots = []
-        for pot_idx, stakes in self.pots.iteritems():
-            if ps.chips == 0 or chips == 0:
-                break
-
-            if ps not in stakes:
-                stakes[ps] = 0
-
-            # Determine how many chips to post in this pot, and
-            # whether it means player goes all-in.
-            all_in = False
-            post = chips
-            if self.pots_limited[pot_idx]:
-                post = min(post, max(stakes.values()) - stakes[ps])
-                assert post > 0
-            if post >= ps.chips:
-                post = ps.chips
-                all_in = True
-
-            print (all_in, post)
-
-            # Move chipts from the player to the pot
-            ps.chips -= post
-            stakes[ps] += post
-            chips -= post
-
-            print '%s posts %s in pot %s - player has %s remaining. All In: %s' % (ps.player, post, pot_idx, ps.chips, all_in)
-
-            # Mark this as a limited pot: further bets may create a
-            # side pot.
-            if all_in:
-                self.pots_limited[pot_idx] = True
-
-                # Maybe move chips to a side pot
-                new_side_pot = {}
-                for other_ps, value in stakes.iteritems():
-                    if value > stakes[ps]:
-                        new_side_pot[other_ps] = value - stakes[ps]
-                        stakes[other_ps] = stakes[ps]
-                if new_side_pot:
-                    new_pots.append(new_side_pot)
-
-        for new_pot in new_pots:
-            i = max(self.pots.keys()) + 1
-            self.pots[i] = new_pot
-            self.pots_limited[i] = False
-
-        # Player has remaining chips. Create new pot
-        if ps.chips and chips:
-            i = max(self.pots.keys()) + 1
-            self.pots[i] = {}
-            self.pots_limited[i] = False
-
-            print 'creating pot %s' % i
-
-            self.pots[i][ps] = chips
-            ps.chips -= chips
-            print '%s posts %s in pot %s - player has %s remaining' % (ps.player, chips, i, ps.chips)
-            chips = 0
+        self.pots.post(ps, chips)
 
         # Update bets. This doesn't care about side pots etc, it's
         # just what the player attempted to match this betting round.
@@ -210,12 +145,6 @@ class Game(object):
             self.bets[ps] += _chips
         except:
             self.bets[ps] = _chips
-
-        print 'pots:'
-        for name, pot in self.pots.iteritems():
-            print 'pot %d (limited: %s)' % (name, self.pots_limited[name])
-            for k, v in pot.iteritems():
-                print "\t", k.player, "\t", v
 
         print 'bets:', ' '.join(('%s=%s' % (k.player, v) for (k, v) in self.bets.iteritems()))
 
@@ -235,8 +164,7 @@ class Game(object):
             raise GameError('game over - too few funded players left')
 
         # There can be multiple pots, per table-stakes rules.
-        self.pots = {} # name -> ps -> num chips
-        self.pots_limited = {} # name -> limited?
+        self.pots = Pots()
 
         self.bets = {} # ps -> attempted bet
 
@@ -411,7 +339,8 @@ class Game(object):
             relative.append((best, ps))
         relative.sort(reverse=True)
 
-        for pot_idx, stakes in self.pots.iteritems():
+        # TODO (bjorn): Leaky! Do not touch self.pots.pots
+        for pot_idx, stakes in self.pots.pots.iteritems():
             ordering = [(best, ps) for (best, ps) in relative if ps in stakes]
             winners = [w for w in ordering if w[0] == ordering[0][0]]
             won = sum(stakes.values()) / len(winners)
