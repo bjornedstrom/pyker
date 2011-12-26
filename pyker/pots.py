@@ -42,6 +42,22 @@ class Pots(object):
         self.pots_limited = {} # name -> limited?
 
     def post(self, ps, chips):
+        """Post a bet into the pots.
+
+        :param ps: An arbitrary "player struct". ps can be anything
+           as long as it has a mutable attribute "chips" which chips
+           will be drawn from and put into the pots. For example, this
+           will work:
+
+           class Player(object):
+               def __init__(self):
+                  self.chips = 3500
+
+        :param chips: The number of chips the player attempts to
+          post. This can be higher than the players current chip
+          (which can happen if the player calls, for example).
+        """
+
         if not self.pots:
             # Create main pot
             print 'creating pot 0'
@@ -69,14 +85,12 @@ class Pots(object):
                 post = ps.chips
                 all_in = True
 
-            print (all_in, post)
-
             # Move chipts from the player to the pot
             ps.chips -= post
             stakes[ps] += post
             chips -= post
 
-            print '%s posts %s in pot %s - player has %s remaining. All In: %s' % (ps.player, post, pot_idx, ps.chips, all_in)
+            print '%s posts %s in pot %s - player has %s remaining. All In: %s' % (ps, post, pot_idx, ps.chips, all_in)
 
             # Mark this as a limited pot: further bets may create a
             # side pot.
@@ -107,7 +121,7 @@ class Pots(object):
 
             self.pots[i][ps] = chips
             ps.chips -= chips
-            print '%s posts %s in pot %s - player has %s remaining' % (ps.player, chips, i, ps.chips)
+            print '%s posts %s in pot %s - player has %s remaining' % (ps, chips, i, ps.chips)
             chips = 0
 
 
@@ -116,3 +130,12 @@ class Pots(object):
             print 'pot %d (limited: %s)' % (name, self.pots_limited[name])
             for k, v in pot.iteritems():
                 print "\t", k, "\t", v
+
+    def list(self):
+        """Yields information about pots and which players have stakes
+        in them.
+        """
+
+        for name, pot in self.pots.iteritems():
+            if pot:
+                yield pot.keys(), sum(pot.values())

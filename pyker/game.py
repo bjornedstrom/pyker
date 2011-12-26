@@ -132,8 +132,6 @@ class Game(object):
             if p is not None:
                 return p
 
-    # TODO (bjorn): This code is too hairy and difficult to
-    # understand. It probably has lots of bugs. Improve!
     def post(self, ps, chips):
         _chips = chips
 
@@ -339,13 +337,12 @@ class Game(object):
             relative.append((best, ps))
         relative.sort(reverse=True)
 
-        # TODO (bjorn): Leaky! Do not touch self.pots.pots
-        for pot_idx, stakes in self.pots.pots.iteritems():
+        for stakes, total in self.pots.list():
             ordering = [(best, ps) for (best, ps) in relative if ps in stakes]
             winners = [w for w in ordering if w[0] == ordering[0][0]]
-            won = sum(stakes.values()) / len(winners)
+            won = total / len(winners)
             for _, ps in winners:
-                print '%s won %s from pot %s' % (ps.player, won, pot_idx)
+                print '%s won %s from a pot' % (ps.player, won)
                 ps.chips += won
 
     def loop(self):
