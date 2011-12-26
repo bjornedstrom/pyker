@@ -159,7 +159,7 @@ class Game(object):
             if self.pots_limited[pot_idx]:
                 post = min(post, max(stakes.values()) - stakes[ps])
                 assert post > 0
-            if post > ps.chips:
+            if post >= ps.chips:
                 post = ps.chips
                 all_in = True
 
