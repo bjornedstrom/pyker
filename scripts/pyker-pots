@@ -1,0 +1,162 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+# Copyright (c) 2011 Björn Edström <be@bjrn.se>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+# 3. Neither the name of the University nor the names of its contributors
+#    may be used to endorse or promote products derived from this software
+#    without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+# OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+# OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+# SUCH DAMAGE.
+
+import optparse
+import sys
+
+import pyker.pots as pots
+
+
+# An OptionParser that doesn't strip new-lines from epilog.
+class OptionParserVerbatimEpilog(optparse.OptionParser):
+    def format_epilog(self, formatter):
+        return self.epilog
+
+
+def usage():
+    return 'usage: %prog [options] BET [BET...]'
+
+
+def epilog():
+    return """
+Format:
+  BET and PLAYER has the form NAME=CHIPS
+    where NAME is the name of a player and CHIPS is an integer.
+
+  POT has the form [L:]NAME=CHIPS[,NAME=CHIPS]
+    where NAME is the name of a player that have stakes in the pot and
+    CHIPS is the money the player has contributed to the pot. If the
+    POT begins with "L:" then it means the pot is limited.
+
+Players:
+  The -p option can be used to create an initial set up of players. If
+  no -p option is given, the players are set up implicitly from the
+  BETs.
+
+Pots and Limits:
+  If no -i option is given, then there are no intial pots. If an
+  initial pot is created that is limited then further bets will be
+  capped up to the maximum stake (per player) in this pot - excess
+  will go to a side pot.
+"""
+
+
+def main():
+    parser = OptionParserVerbatimEpilog(usage=usage(), epilog=epilog())
+
+    parser.add_option('-p', '--player', action='append', dest='players', metavar='PLAYER', help='set up players (may be given multiple times)')
+    parser.add_option('-i', '--initial', action='append', dest='initial', metavar='POT', help='set up initial pot (may be given multiple times)')
+
+    options, args = parser.parse_args()
+    if not args:
+        parser.error('no BET given')
+
+    p = pots.Pots()
+
+    class Player(object):
+        def __init__(self, name, chips):
+            self.name = name
+            self.chips = chips
+        def __repr__(self):
+            return self.name
+
+    players = {}
+
+    print 'initial setup:'
+    if options.players:
+        for s_player in options.players:
+            try:
+                name, chips = s_player.split('=')
+                chips = int(chips)
+            except Exception, e:
+                parser.error('failed to parse %s: %s' % (s_player, e))
+            if name in players:
+                parser.error('player %s defined multiple times in --player' % (name,))
+            players[name] = Player(name, chips)
+
+            print 'created player %s with %s chips' % (name, chips)
+    else:
+        for s_bet in args:
+            try:
+                name, chips = s_bet.split('=')
+            except Exception, e:
+                parser.error('failed to parse %s: %s' % (s_bet, e))
+            if name in players:
+                parser.error('player %s defined multiple times in BET' % (name,))
+            players[name] = Player(name, 0)
+
+            print 'created player %s with 0 chips (use -p option to override)' % (name,)
+    print
+
+    for pot_idx, initial in enumerate(options.initial or []):
+        limited = False
+        if initial.startswith('L:'):
+            limited = True
+            initial = initial[2:]
+
+        if not initial:
+            parser.error('failed to parse pots %s - empty' % (initial,))
+
+        total = 0
+        p.pots[pot_idx] = {}
+        for s_stake in initial.split(','):
+            try:
+                player, chips = s_stake.split('=')
+                chips = int(chips)
+            except Exception, e:
+                parser.error('failed to parse %s: %s' % (s_stake, e))
+
+            if players[player] in p.pots[pot_idx]:
+                parser.error('player %s defined multiple times in --initial' % (player,))
+
+            p.pots[pot_idx][players[player]] = chips
+            total += chips
+
+        p.pots_limited[pot_idx] =  limited
+
+        print 'set up pot %s with %s chips%s, player(s) %s have stakes' % (pot_idx, total, ' (limited)' if limited else '', initial)
+
+    if options.initial:
+        print
+
+    print 'placing bets:'
+
+    for s_bet in args:
+        name, chips = s_bet.split('=')
+        if name not in players:
+            parser.error('player %s does not exist' % (name,))
+        chips = int(chips)
+        p.post(players[name], chips)
+
+    sys.exit(0)
+
+
+if __name__ == '__main__':
+    main()
