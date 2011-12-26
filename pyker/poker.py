@@ -166,10 +166,10 @@ class HandClass(object):
         # tuple of Ranks, ordered with most significant information
         # first:
         ranks = self._score()
-        for i in xrange(len(ranks)):
+        for i, r in enumerate(reversed(ranks)): #xrange(len(ranks)):
             # Subtract 2 so we can use a base-13 number instead of
             # base-15.
-            score += (ranks[i].rank - 2) * 13**i
+            score += (r.rank - 2) * 13**i
         return score
 
     def _score(self):
