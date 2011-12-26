@@ -122,6 +122,9 @@ class Card(object):
 
         assert self.suit in ('h', 's', 'c', 'd')
 
+    def __cmp__(self, other):
+        return cmp((self.rank, self.suit), (other.rank, other.suit))
+
     def __str__(self):
         return '%s%s' % (self.rank, self.suit)
 
@@ -416,30 +419,3 @@ def string_to_cards(s):
     """
 
     return map(Card.from_string, s.split())
-
-
-if __name__ == '__main__':
-    c1 = Card.from_string('9h')
-    c2 = Card.from_string('th')
-
-    hh = [
-        '7h 8h 9h th jh',
-        '7h 7s 7c 7d jh',
-        '3h 3c 3s tc th',
-        '7h 8h 2h th jh',
-        '9c 8h 7d td jh',
-        '3c 3h 3d td js',
-        '2c 2s 3d 3h jd',
-        '7c 4s 4d th jd',
-        'kc as 9d 3h 2d'
-    ]
-
-    for h in hh:
-        #print h, repr(Hand.from_string(h).classify())
-        print h,
-        try:
-            print Hand.from_string(h).classify().score()
-        except Exception, e:
-            print 'failed', e
-
-    print Hand.best_from_seven(*string_to_cards('kc as 9d 3h 2d ac ks')).classify()
